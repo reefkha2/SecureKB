@@ -25,39 +25,47 @@ SecureKB is a secure knowledge management solution built on Amazon Bedrock Knowl
 
 ## Architecture
 
-![SecureKB Architecture](securekb_architecture.png)
+![SecureKB Architecture](securekb_architecture_horizontal.png)
 
-### 1. Data Ingestion & Processing Flow
+### Data Ingestion Flow
 
-1.1. **Document S3 Bucket**: Source repository for all documents to be ingested into the knowledge base
+**1. Amazon S3 Data Source → Transform Lambda**
+- Documents are uploaded to an Amazon S3 bucket
+- This triggers the Transform Lambda function
+- The S3 bucket serves as the source repository for all documents to be ingested into the knowledge base
 
-1.2. **Document Processing**: Cluster of components responsible for processing documents
+**2. Transform Lambda → Bedrock Knowledge Base**
+- The Transform Lambda function processes each document using Claude to:
+  - Generate a concise summary of the document (maximum 50 words)
+  - Determine which departments should have access (public, sales, hr, finance, executive)
+  - Assign an appropriate sensitivity level (public, internal, confidential, restricted)
+- The Lambda function adds this metadata to the document
+- The processed document is then ingested into the Bedrock Knowledge Base
+- No chunking is performed, preserving the full document content
 
-1.3. **Transform Lambda**: Analyzes documents using Claude to:
-   - Generate a concise summary of each document
-   - Determine which departments should have access (public, sales, hr, finance, executive)
-   - Assign an appropriate sensitivity level (public, internal, confidential, restricted)
-   - Add metadata to the document for access control
+### User Interaction Flow
 
-1.4. **Parameter Store**: Stores configuration parameters for the transformation process
+**3. Users → Cognito Authentication**
+- Users access the SecureKB web application
+- They authenticate using Amazon Cognito
+- Cognito verifies their credentials and provides authentication tokens
+- User attributes (department and clearance level) are stored in Cognito and included in the tokens
 
-1.5. **Bedrock Knowledge Base**: Stores and indexes the processed documents with their metadata
+**4. Cognito Authentication → API Gateway**
+- After successful authentication, the web application receives tokens containing user attributes
+- When a user submits a query, the tokens are sent with the request to the API Gateway
+- The API Gateway validates the tokens using a Cognito authorizer
 
-### 2. User Interaction Flow
+**5. API Gateway → Query Lambda**
+- The API Gateway forwards the authenticated request to the Query Lambda function
+- The request includes the user's query and authentication tokens
 
-2.1. **Users**: End users with different roles (departments and clearance levels)
-
-2.2. **Cognito Authentication**: Authenticates users and provides their role information (department and clearance level)
-
-2.3. **Web Application**: User interface for interacting with the knowledge base
-
-2.4. **API Gateway**: Exposes the query endpoint and forwards requests to the Lambda function
-
-2.5. **Query Lambda**: Processes user queries by:
-   - Retrieving relevant documents from the knowledge base
-   - Filtering results based on the user's department and clearance level
-   - Generating responses using Claude based on accessible documents
-   - Providing appropriate access denied messages when users don't have sufficient privileges
+**6. Query Lambda → Bedrock Knowledge Base**
+- The Query Lambda function extracts user role information (department and clearance level) from the Cognito tokens
+- It queries the Bedrock Knowledge Base using the retrieve API
+- It filters the results based on the user's department and clearance level
+- It uses only the accessible documents to generate a response using Claude
+- If the user doesn't have access to any relevant documents, it provides a detailed access denied message
 
 ## Implementation Details
 
@@ -91,29 +99,14 @@ When a user doesn't have access to information, the system provides a clear mess
 - The user's current access level
 - How to request elevated access privileges
 
-## Making SecureKB Reusable
+### Source Code
 
-To make this solution easily reusable across different organizations and use cases, we can:
+The source code for the Lambda functions is available in the repository:
 
-1. **Create a CloudFormation Template**: Package the entire solution as an AWS CloudFormation template that can be deployed with a few clicks
+- **Transform Lambda**: Located in `src/lambda/transform_processor/index.py`
+- **Query Lambda**: Located in `src/lambda/query_processor/index.py`
 
-2. **Develop a CDK Construct**: Create an AWS CDK construct that encapsulates the SecureKB architecture, making it easy to integrate into existing CDK applications
-
-3. **Build a Solution in AWS Solutions Library**: Submit the solution to the AWS Solutions Library with comprehensive documentation and deployment guides
-
-4. **Create Configuration Parameters**: Make key aspects configurable:
-   - Department names and hierarchy
-   - Sensitivity levels and their hierarchy
-   - Document classification prompts
-   - Access control logic
-
-5. **Provide Sample Documents and Templates**: Include sample documents and templates for different industries and use cases
-
-6. **Create a Custom Web UI Package**: Package the web UI as a reusable component that can be easily customized and deployed
-
-7. **Develop Integration Guides**: Create guides for integrating SecureKB with existing authentication systems, document repositories, and applications
-
-8. **Build a CLI Tool**: Create a command-line tool for managing the SecureKB deployment, including adding/removing departments, updating sensitivity levels, and managing users
+These Lambda functions implement the core functionality of the SecureKB solution, including document processing, metadata extraction, and access control enforcement.
 
 ## Getting Started
 
